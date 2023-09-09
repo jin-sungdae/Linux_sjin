@@ -1,0 +1,340 @@
+# **1. 부트 프로세스:**
+
+### 1. **BIOS/UEFI:**
+
+1. **전원 인가 (Power-Up)**:
+    - 컴퓨터가 켜질 때, 전원 공급 장치 (PSU)는 모든 하드웨어 컴포넌트에 전력을 공급합니다.
+2. **POST (Power-On Self-Test)**:
+    - 시스템이 시작되면, BIOS는 POST를 실행합니다. 이 과정에서는 시스템의 기본 하드웨어 (RAM, CPU, 키보드, 마우스 등)가 제대로 작동하는지 검사합니다.
+    - 만약 어떠한 하드웨어에 문제가 발생하면, 오류 코드 또는 경고음을 통해 사용자에게 알립니다.
+3. **BIOS/UEFI 설정**:
+    - POST가 성공적으로 완료되면, BIOS는 CMOS에서 시스템 설정 (예: 시간, 날짜, 부트 순서)을 로드합니다. 사용자는 BIOS 설정 화면을 통해 이러한 설정을 수정할 수 있습니다.
+4. **부트 장치 검색**:
+    - BIOS/UEFI는 설정된 부트 순서에 따라 저장 장치 (예: HDD, SSD, USB, CD/DVD)를 검사하여 부트 섹터를 찾습니다.
+5. **부트로더 실행**:
+    - BIOS/UEFI는 부트 장치의 첫 번째 섹터 (MBR 또는 GPT에 따라)에서 부트로더 (예: GRUB)를 찾아 로드하고 실행합니다.
+    - 이 부트로더는 사용자에게 여러 운영 체제 중에서 선택할 수 있는 옵션을 제공할 수도 있습니다.
+6. **OS 로딩**:
+    - 부트로더는 선택된 운영 체제의 커널 이미지와 initrd (초기 RAM 디스크)를 메모리에 로드합니다.
+
+이러한 단계를 거치면, BIOS/UEFI는 그 역할을 마치게 되고, 커널 및 초기화 프로세스가 실행됩니다.
+
+### **2. Bootloader (GRUB):**
+
+GRUB의 기본 설정 파일은 **`/boot/grub/grub.cfg`**에 있습니다. 이 설정 파일에는 커널을 로드하기 위한 정보와 옵션이 포함되어 있습니다.
+
+예시:
+
+```bash
+bashCopy code
+menuentry 'Ubuntu' --class ubuntu --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-simple-xxxx-xxxx-xxxx-xxxx' {
+   recordfail
+   load_video
+   gfxmode $linux_gfx_mode
+   insmod gzio
+   insmod part_msdos
+   insmod ext2
+   set root='hd0,msdos1'
+   linux   /vmlinuz root=UUID=xxxx-xxxx-xxxx-xxxx ro  quiet splash $vt_handoff
+   initrd  /initrd.img
+}
+
+```
+
+### **3. 커널 초기화:**
+
+커널이 시작되면, **`start_kernel`** 함수에서 초기화 과정이 시작됩니다. 이 함수는 **`/init/main.c`**에 위치해 있습니다.
+
+C 코드 예시:
+
+```c
+cCopy code
+void start_kernel(void)
+{
+   ...
+   setup_arch(&command_line);
+   ...
+   setup_per_cpu_areas();
+   ...
+   build_all_zonelists(NULL, NULL);
+   ...
+   rest_init();
+}
+
+```
+
+이 함수 내에서 여러 초기화 작업들이 이루어집니다.
+
+### **4. init/Systemd 프로세스:**
+
+초기화 작업 후 **`init`** 프로세스나 **`systemd`**가 PID 1로 실행됩니다. 대부분의 최신 Linux 배포판은 **`systemd`**를 사용합니다.
+
+Systemd의 서비스 파일은 **`/lib/systemd/system`**에 위치해 있습니다. 예를 들어, 네트워킹 서비스는 다음과 같이 정의될 수 있습니다:
+
+```bash
+bashCopy code
+[Unit]
+Description=Network Service
+Wants=network.target
+Before=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/networking start
+ExecStop=/usr/sbin/networking stop
+
+[Install]
+WantedBy=multi-user.target
+
+```
+
+# 2. **커널:**
+
+## 1.**시스템 호출**:
+
+**시스템 호출의 동작 원리:**
+
+1. **사용자 모드에서 커널 모드로의 전환**:
+   프로그램은 특정 시스템 호출을 사용하려 할 때, 그에 해당하는 시스템 호출 번호와 필요한 인자를 레지스터에 저장합니다.
+2. **트랩 명령 실행**:
+   CPU는 사용자 모드에서 커널 모드로 전환됩니다. 이 전환은 트랩 명령(trap instruction)을 통해 이루어집니다.
+3. **시스템 호출 디스패처 실행**:
+   커널 내부에서는 시스템 호출 번호를 확인하고 해당 번호와 연결된 함수를 실행합니다.
+4. **커널 모드에서 사용자 모드로 전환**:
+   시스템 호출이 완료되면 결과값을 반환하고, CPU는 다시 사용자 모드로 전환됩니다.
+
+### **예시: `write` 시스템 호출**
+
+```c
+cCopy code
+#include <unistd.h>int main() {
+    const char *msg = "Hello, World!";
+    write(STDOUT_FILENO, msg, 13);
+    return 0;
+}
+
+```
+
+위 코드에서 **`write`** 함수는 사용자 공간의 라이브러리 함수로 시작됩니다. 이 함수는 내부적으로 **`write`** 시스템 호출을 사용하며, 해당 시스템 호출은 위에서 설명한 프로세스를 통해 커널 공간에서 실행됩니다. 여기서 실제로 파일에 데이터를 쓰는 작업이 이루어집니다.
+
+이러한 과정을 통해 시스템 호출은 사용자 공간과 커널 공간 사이의 다리 역할을 하며, 프로그램이 하드웨어 리소스나 커널의 기능을 안전하게 사용할 수 있도록 합니다.
+
+## 2.**프로세스 관리:**
+
+**프로세스**는 실행 중인 프로그램의 인스턴스를 의미합니다. 커널은 프로세스의 생성부터 종료까지 여러 관련 작업을 처리하며, 이는 프로세스 관리의 핵심 부분입니다.
+
+### 1. **프로세스의 생성**:
+
+- **fork()**: 프로세스 생성의 기본 메커니즘. 현재 프로세스의 복사본(자식 프로세스)을 만들어냅니다. 두 프로세스는 거의 동일하지만, 프로세스 ID(PID)만 다릅니다.
+
+```c
+cCopy code
+#include <sys/types.h>#include <unistd.h>int main() {
+    pid_t pid;
+
+    pid = fork();
+
+    if (pid < 0) {
+        // fork 실패
+    } else if (pid == 0) {
+        // 자식 프로세스에서 실행되는 코드
+    } else {
+        // 부모 프로세스에서 실행되는 코드
+    }
+
+    return 0;
+}
+
+```
+
+- **exec()**: 프로세스의 현재 실행 코드를 새로운 프로그램으로 대체합니다.
+
+### 2. **프로세스 스케줄링**:
+
+커널은 여러 프로세스 사이에서 CPU 시간을 어떻게 분배할지 결정하는 스케줄러를 가지고 있습니다. 스케줄링 알고리즘에는 다양한 것이 있으며, 대표적으로 Round Robin, Priority-based scheduling 등이 있습니다.
+
+- **context switch**: 하나의 프로세스에서 다른 프로세스로 CPU 제어를 전환하는 과정입니다. 이 때, 현재 CPU 상태를 PCB (Process Control Block)에 저장하고, 새로운 프로세스의 상태를 불러옵니다.
+
+### 3. **프로세스의 종료**:
+
+- **exit()**: 프로세스는 실행을 완료한 후 **`exit()`** 시스템 호출을 통해 종료됩니다. 이 시스템 호출은 프로세스가 사용하던 모든 리소스를 해제하는 작업을 트리거합니다.
+- **wait()**: 부모 프로세스가 자식 프로세스의 종료를 기다립니다. 자식 프로세스가 종료될 때까지 부모 프로세스는 블록(blocked) 상태가 됩니다.
+
+```c
+cCopy code
+pid_t pid;
+int status;
+
+pid = fork();
+
+if (pid == 0) {
+    // 자식 프로세스
+    exit(0);
+} else {
+    // 부모 프로세스
+    wait(&status);
+}
+
+```
+
+이와 같이 커널의 프로세스 관리는 프로세스의 생명주기 전반에 걸친 다양한 작업을 포함하고 있습니다.
+
+## 3.**메모리 관리:**
+
+### **메모리 할당의 원리**:
+
+1. **메모리 풀 (Memory Pool)**:
+    - 대부분의 운영 체제는 효율적인 메모리 할당을 위해 메모리 풀을 사용합니다. 여기에는 여러 크기의 메모리 블록이 미리 할당되어 있습니다.
+    - **`malloc`**과 같은 메모리 할당 함수를 호출하면, 해당 크기에 가장 적합한 블록을 메모리 풀에서 선택하여 프로세스에 제공합니다.
+2. **힙 (Heap)**:
+    - 동적 메모리 할당을 위해 사용되는 메모리 영역입니다.
+    - **`malloc`**은 내부적으로 힙 영역에 공간을 할당하고 해당 주소를 반환합니다.
+    - 할당된 메모리는 프로세스에 의해 명시적으로 **`free`**되거나, 프로세스가 종료될 때 운영 체제에 의해 자동으로 해제됩니다.
+
+### **메모리 할당의 내부 동작**:
+
+**`malloc`**의 내부 구조는 상당히 복잡하지만, 기본적인 아이디어는 다음과 같습니다:
+
+1. 요청된 크기의 블록을 찾기 위해 힙 영역을 검색합니다.
+2. 적절한 크기의 블록을 찾으면 해당 블록의 주소를 반환합니다.
+3. 만약 힙에 충분한 공간이 없다면, 운영 체제에게 추가 메모리를 요청합니다.
+
+### **가비지 컬렉션 (Garbage Collection)**:
+
+메모리 관리에서 중요한 개념 중 하나는 가비지 컬렉션입니다. 가비지 컬렉션은 동적으로 할당된 메모리 중 더 이상 참조되지 않는 메모리를 자동으로 해제하는 메커니즘입니다. C나 C++ 같은 언어는 개발자가 직접 메모리를 관리해야 하지만, Java나 C# 같은 언어는 가비지 컬렉터를 통해 메모리를 자동으로 관리합니다.
+
+**동작 원리**:
+
+1. **참조 추적**: 시스템은 모든 변수와 그들이 참조하는 메모리 블록을 추적합니다.
+2. **비활성 메모리 탐지**: 참조되지 않는 메모리 블록을 찾습니다.
+3. **메모리 해제**: 참조되지 않는 메모리를 해제합니다.
+
+이러한 과정은 시스템의 부하나 메모리 사용 효율에 영향을 줄 수 있으므로, 가비지 컬렉션의 동작 방식과 타이밍은 상당히 중요합니다.
+
+## 4.**파일 시스템:**
+
+리눅스는 여러 파일 시스템을 지원합니다. Ext4, Btrfs, XFS 등이 그 예입니다. 파일 시스템의 핵심 구성 요소는 inode, 데이터 블록, 디렉토리입니다.
+
+### 1. **Inode (Information Node)**
+
+- **정의**: 각 파일과 디렉토리는 inode에 의해 표현됩니다. Inode는 파일 메타데이터를 저장하는 구조입니다.
+- **내용**: 파일의 권한, 소유자, 수정 날짜, 접근 날짜, 데이터의 위치 등의 정보가 포함됩니다.
+- **동작 원리**: 파일을 열 때, 시스템은 파일 이름을 사용하여 inode 번호를 찾습니다. 이후 이 inode 번호를 사용하여 파일에 대한 상세 정보 및 데이터 위치를 알아냅니다.
+
+```c
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int main() {
+    struct stat fileStat;
+    
+    if(stat("test.txt", &fileStat) < 0) {
+        perror("stat");
+        return 1;
+    }
+
+    printf("File inode: %ld\n", fileStat.st_ino);
+    printf("File size: %ld bytes\n", fileStat.st_size);
+
+    return 0;
+}
+```
+
+### 2. **데이터 블록**
+
+- **정의**: 파일의 실제 데이터는 '데이터 블록'이라는 연속적인 공간에 저장됩니다.
+- **동작 원리**: Inode는 파일 데이터가 저장된 블록의 주소 목록을 가지고 있습니다. 따라서, 시스템은 inode 정보를 사용하여 파일 데이터에 접근합니다.
+
+### 3. **디렉토리 구조**
+
+- **정의**: 디렉토리는 실제로는 파일 이름과 해당 inode 번호를 연결하는 테이블입니다.
+- **동작 원리**: 사용자가 파일에 접근하려고 할 때, 시스템은 먼저 디렉토리 구조를 검색하여 해당 파일의 inode 번호를 찾습니다. 이후 inode 정보를 사용하여 파일의 실제 데이터에 접근합니다.
+
+```c
+
+#include <stdio.h>
+#include <dirent.h>
+
+int main() {
+    DIR *dir;
+    struct dirent *entry;
+
+    dir = opendir(".");
+    if (dir == NULL) {
+        perror("opendir");
+        return 1;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        printf("File name: %s, Inode number: %ld\n", entry->d_name, entry->d_ino);
+    }
+
+    closedir(dir);
+    return 0;
+}
+```
+
+### 4. **Superblock**
+
+- **정의**: 파일 시스템의 전체적인 정보를 저장하는 블록입니다.
+- **내용**: Inode와 데이터 블록의 전체 수, 사용 중인 및 사용 가능한 inode와 데이터 블록의 수, 마지막으로 파일 시스템이 검사된 시간 등의 정보가 포함됩니다.
+- **동작 원리**: 파일 시스템이 마운트될 때, superblock은 중요한 정보를 제공하여 파일 시스템의 상태와 구조를 파악하는 데 도움을 줍니다.
+
+```c
+#include <stdio.h>
+#include <sys/vfs.h>
+
+int main() {
+    struct statfs fs_info;
+
+    if (statfs("/", &fs_info) != 0) {
+        perror("statfs");
+        return 1;
+    }
+
+    printf("Total data blocks: %ld\n", fs_info.f_blocks);
+    printf("Free blocks: %ld\n", fs_info.f_bfree);
+    printf("Total file inodes: %ld\n", fs_info.f_files);
+    printf("Free inodes: %ld\n", fs_info.f_ffree);
+
+    return 0;
+}
+```
+
+# 3.**사용자 공간:**
+
+- **쉘 (bash, zsh 등)**:
+    - **설명**: 쉘은 사용자와 OS 간의 인터페이스로, 텍스트 기반의 명령어를 통해 시스템을 조작할 수 있게 해줍니다. 사용자가 명령어를 입력하면 쉘은 해당 명령어를 파싱하고 실행합니다.
+    - **예제**:
+
+        ```bash
+        bashCopy code
+        echo "Hello, World!"   # 화면에 텍스트 출력
+        ls -l                 # 현재 디렉토리의 파일 및 폴더 목록 출력
+        
+        ```
+
+- **시스템 데몬**:
+    - **설명**: 데몬은 백그라운드에서 실행되는 프로세스로, 다양한 시스템 서비스와 관련된 작업을 처리합니다.
+    - **예제**: **`sshd`**는 SSH 프로토콜을 통한 원격 접속을 관리하는 데몬입니다.
+- **라이브러리**:
+    - **설명**: 라이브러리는 프로그램이 공통으로 사용하는 함수와 데이터 구조를 제공합니다. 이를 통해 코드 재사용성을 높이고 프로그램 크기를 줄일 수 있습니다.
+    - **예제**: **`printf`** 함수는 glibc 라이브러리에 포함되어 있습니다.
+- **응용 프로그램**:
+    - **설명**: 응용 프로그램은 사용자가 직접 실행하여 특정 작업을 수행할 수 있게 해주는 소프트웨어입니다.
+    - **예제**: 웹 브라우저, 텍스트 편집기, 그래픽 디자인 도구 등이 있습니다.
+
+# 4. **보안:**
+
+- **SELinux/AppArmor**:
+    - **설명**: SELinux와 AppArmor는 Mandatory Access Control(MAC)을 통해 프로세스의 권한을 제한합니다. 프로세스가 허용된 작업만 수행할 수 있도록 설정된 정책에 따라 동작합니다.
+    - **예제**: SELinux에서는 **`setenforce`** 명령어를 사용하여 강제 모드(Enforcing)와 허용 모드(Permissive) 간에 전환할 수 있습니다.
+- **Firewall (iptables, nftables)**:
+    - **설명**: iptables와 nftables는 패킷 필터링 툴로, 네트워크 트래픽의 허용 및 차단 규칙을 정의할 수 있습니다.
+    - **예제**: iptables를 사용하여 특정 IP 주소로부터의 모든 입력 트래픽을 차단하는 규칙을 설정할 수 있습니다.
+- **PAM (Pluggable Authentication Modules)**:
+    - **설명**: PAM은 다양한 인증 메커니즘을 제공하며, 서비스별로 인증 방식을 독립적으로 설정할 수 있게 해줍니다.
+    - **예제**: **`/etc/pam.d/sshd`** 파일은 SSH 데몬에 대한 PAM 설정을 포함하고 있습니다.
