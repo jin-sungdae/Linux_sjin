@@ -48,7 +48,6 @@ menuentry 'Ubuntu' --class ubuntu --class gnu-linux --class gnu --class os $menu
 C 코드 예시:
 
 ```c
-cCopy code
 void start_kernel(void)
 {
    ...
@@ -107,7 +106,6 @@ WantedBy=multi-user.target
 ### **예시: `write` 시스템 호출**
 
 ```c
-cCopy code
 #include <unistd.h>int main() {
     const char *msg = "Hello, World!";
     write(STDOUT_FILENO, msg, 13);
@@ -129,7 +127,6 @@ cCopy code
 - **fork()**: 프로세스 생성의 기본 메커니즘. 현재 프로세스의 복사본(자식 프로세스)을 만들어냅니다. 두 프로세스는 거의 동일하지만, 프로세스 ID(PID)만 다릅니다.
 
 ```c
-cCopy code
 #include <sys/types.h>#include <unistd.h>int main() {
     pid_t pid;
 
@@ -162,7 +159,6 @@ cCopy code
 - **wait()**: 부모 프로세스가 자식 프로세스의 종료를 기다립니다. 자식 프로세스가 종료될 때까지 부모 프로세스는 블록(blocked) 상태가 됩니다.
 
 ```c
-cCopy code
 pid_t pid;
 int status;
 
